@@ -1,42 +1,35 @@
-import onnx
-import tensorflow
 import torch
-import torchvision
-from onnx_tf.backend import prepare
+import onnx
+import tensorflow as tf
+import subprocess
+import os
 
-from cc import cc
+# Define paths
+input_model_path = './input/inference_graph.pth'
+onnx_model_path = './output/model.onnx'
+saved_model_dir = './output/tf_model'
+tflite_model_path = './output/model.tflite'
 
-# Load the PyTorch model
-model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(pretrained=True)
+# Load your PyTorch model
+model = torch.load(input_model_path)
 model.eval()
 
-# Create dummy input
+# Dummy input matching the model's input dimensions
 dummy_input = torch.randn(1, 3, 512, 512)
 
-print(cc("YELLOW", "Exporting the model to ONNX from PyTorch..."))
+# Export the model to ONNX format
+torch.onnx.export(model, dummy_input, onnx_model_path, opset_version=11)
+print(f"ONNX model saved at {onnx_model_path}")
 
-# Export the model to ONNX
-torch.onnx.export(model, dummy_input, "fasterrcnn_mobilenet_v3_large_320_fpn.onnx", opset_version=11)
+# Convert ONNX model to TensorFlow SavedModel using onnx2tf
+subprocess.run(['onnx2tf', '-i', onnx_model_path, '-o', saved_model_dir])
+print(f"TensorFlow SavedModel saved at {saved_model_dir}")
 
-print(cc("GREEN", "Model exported to ONNX!"))
-print(cc("YELLOW", "Exporting the model to TensorFlow from ONNX..."))
-
-# Load the ONNX model
-onnx_model = onnx.load("fasterrcnn_mobilenet_v3_large_320_fpn.onnx")
-
-# Convert to TensorFlow
-tf_rep = prepare(onnx_model)
-tf_rep.export_graph("fasterrcnn_mobilenet_v3_large_320_fpn.pb")
-
-print(cc("GREEN", "Model exported to TensorFlow!"))
-print(cc("YELLOW", "Exporting the model to TensorFlow Lite from TensorFlow..."))
-
-# Convert the model
-converter = tensorflow.lite.TFLiteConverter.from_saved_model("fasterrcnn_mobilenet_v3_large_320_fpn.pb")
+# Convert TensorFlow SavedModel to TFLite
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 tflite_model = converter.convert()
 
-# Save the model
-with open("fasterrcnn_mobilenet_v3_large_320_fpn.tflite", "wb") as f:
+# Save the TFLite model
+with open(tflite_model_path, 'wb') as f:
     f.write(tflite_model)
-
-print(cc("GREEN", "Model exported to TensorFlow Lite!"))
+print(f"TFLite model saved at {tflite_model_path}")
